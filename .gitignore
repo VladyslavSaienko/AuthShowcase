@@ -1,0 +1,21 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## Certificates (real, non-dev)
+certs/*.pfx
+certs/*.key
+!certs/.gitkeep
+
+## Env / secrets
+*.env
+appsettings.*.local.json
+
+## Testcontainers / misc
+*.log
