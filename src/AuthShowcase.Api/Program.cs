@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using AuthShowcase.Api.Auth.ApiKey;
 using AuthShowcase.Api.Auth.Basic;
@@ -6,8 +7,10 @@ using AuthShowcase.Api.Auth.Jwt;
 using AuthShowcase.Api.Data;
 using AuthShowcase.Api.Domain;
 using AuthShowcase.Shared.Constants;
+using Microsoft.AspNetCore.Authentication.Certificate;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -39,6 +42,26 @@ builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<RefreshTokenService>();
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()!;
+
+// mTLS: Kestrel must ask for (but not globally require) a client certificate on the
+// HTTPS endpoint. "Allow" rather than "Require" so every other auth scheme keeps working
+// over the same port; only the /auth/certificate/* endpoint enforces the cert via [Authorize].
+var caCertPath = Path.Combine(builder.Environment.ContentRootPath,
+    builder.Configuration["Certificates:CaCertPath"] ?? "../../certs/ca.crt");
+var caCertificate = X509CertificateLoader.LoadCertificateFromFile(caCertPath);
+
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ConfigureHttpsDefaults(httpsOptions =>
+    {
+        httpsOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+        // Kestrel's own TLS-layer chain check only trusts the OS root store, which doesn't
+        // (and shouldn't) know about our throwaway dev CA. Accept any cert at the handshake
+        // and let the Certificate authentication handler do the real check against
+        // CustomTrustStore below - otherwise the handshake itself gets aborted.
+        httpsOptions.ClientCertificateValidation = (_, _, _) => true;
+    });
+});
 
 builder.Services.AddAuthentication()
     .AddJwtBearer(AuthShowcaseSchemes.Jwt, options =>
@@ -90,7 +113,32 @@ builder.Services.AddAuthentication()
     })
     .AddScheme<BasicAuthenticationSchemeOptions, BasicAuthenticationHandler>(AuthShowcaseSchemes.Basic, _ => { })
     .AddScheme<ApiKeyAuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(AuthShowcaseSchemes.ApiKey, _ => { })
-    .AddScheme<HmacAuthenticationSchemeOptions, HmacAuthenticationHandler>(AuthShowcaseSchemes.Hmac, _ => { });
+    .AddScheme<HmacAuthenticationSchemeOptions, HmacAuthenticationHandler>(AuthShowcaseSchemes.Hmac, _ => { })
+    .AddCertificate(AuthShowcaseSchemes.Certificate, options =>
+    {
+        // Chained only: every accepted cert must chain to our dev CA (CustomTrustStore below).
+        // CertificateTypes.All would also accept bare self-signed certs with no chain check at
+        // all, which defeats the point of running our own CA for this demo.
+        options.AllowedCertificateTypes = CertificateTypes.Chained;
+        options.RevocationMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
+        options.ChainTrustValidationMode = X509ChainTrustMode.CustomRootTrust;
+        options.CustomTrustStore = [caCertificate];
+        options.Events = new CertificateAuthenticationEvents
+        {
+            OnCertificateValidated = context =>
+            {
+                var claims = new List<System.Security.Claims.Claim>
+                {
+                    new(System.Security.Claims.ClaimTypes.NameIdentifier, context.ClientCertificate.Subject),
+                    new("cert_thumbprint", context.ClientCertificate.Thumbprint),
+                };
+                context.Principal = new System.Security.Claims.ClaimsPrincipal(
+                    new System.Security.Claims.ClaimsIdentity(claims, context.Scheme.Name));
+                context.Success();
+                return Task.CompletedTask;
+            },
+        };
+    });
 
 builder.Services.AddAuthorization();
 

@@ -8,10 +8,11 @@ obj/
 .idea/
 .vscode/
 
-## Certificates (real, non-dev)
-certs/*.pfx
-certs/*.key
-!certs/.gitkeep
+## Certificates
+## The dev/test mTLS certs under certs/ (ca.*, client.*, untrusted-client.*) are
+## intentionally committed - they're throwaway, clearly-fake, dev-only certs that
+## let the repo run mTLS demos with zero setup. Never put real certs there; if you
+## ever do, ignore them locally instead of changing this rule.
 
 ## Env / secrets
 *.env
