@@ -1,5 +1,7 @@
 using System.Text;
+using AuthShowcase.Api.Auth.ApiKey;
 using AuthShowcase.Api.Auth.Basic;
+using AuthShowcase.Api.Auth.Hmac;
 using AuthShowcase.Api.Auth.Jwt;
 using AuthShowcase.Api.Data;
 using AuthShowcase.Api.Domain;
@@ -86,7 +88,9 @@ builder.Services.AddAuthentication()
             return Task.CompletedTask;
         };
     })
-    .AddScheme<BasicAuthenticationSchemeOptions, BasicAuthenticationHandler>(AuthShowcaseSchemes.Basic, _ => { });
+    .AddScheme<BasicAuthenticationSchemeOptions, BasicAuthenticationHandler>(AuthShowcaseSchemes.Basic, _ => { })
+    .AddScheme<ApiKeyAuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(AuthShowcaseSchemes.ApiKey, _ => { })
+    .AddScheme<HmacAuthenticationSchemeOptions, HmacAuthenticationHandler>(AuthShowcaseSchemes.Hmac, _ => { });
 
 builder.Services.AddAuthorization();
 
@@ -104,6 +108,11 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+if (app.Environment.IsDevelopment())
+{
+    await SeedData.SeedAsync(app.Services);
+}
 
 app.Run();
 
