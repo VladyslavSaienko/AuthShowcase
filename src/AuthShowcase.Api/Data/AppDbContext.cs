@@ -11,6 +11,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
     public DbSet<ImpersonationSession> ImpersonationSessions => Set<ImpersonationSession>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<TokenFamily> TokenFamilies => Set<TokenFamily>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -37,6 +39,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<ChatMessage>(e =>
         {
             e.HasKey(m => m.Id);
+        });
+
+        builder.Entity<TokenFamily>(e =>
+        {
+            e.HasKey(f => f.Id);
+            e.HasIndex(f => f.UserId);
+        });
+
+        builder.Entity<RefreshToken>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.HasOne(t => t.Family)
+                .WithMany(f => f.RefreshTokens)
+                .HasForeignKey(t => t.FamilyId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
